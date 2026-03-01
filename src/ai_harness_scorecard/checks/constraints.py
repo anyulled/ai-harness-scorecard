@@ -57,6 +57,7 @@ class LinterEnforcementCheck(BaseCheck):
         r"pyright",
         r"ktlint",
         r"swiftlint",
+        r"checkstyle",
     ]
 
     def run(self, context: RepoContext) -> CheckResult:
@@ -71,6 +72,13 @@ class LinterEnforcementCheck(BaseCheck):
                     f"Linter found in CI ({pattern}) but may not be blocking",
                     "Ensure linter job is not set to allow_failure / continue-on-error.",
                 )
+
+        if "java" in context.languages and context.has_file("checkstyle.xml"):
+            return self.partial_result(
+                2.0,
+                "Checkstyle config found but not confirmed in CI",
+                "Add checkstyle to your CI pipeline as a blocking job.",
+            )
 
         return self.fail_result(
             "No linter found in CI",
