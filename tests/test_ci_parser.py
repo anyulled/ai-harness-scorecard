@@ -54,3 +54,26 @@ jobs:
     configs = parse_ci_configs(tmp_path)
     assert len(configs) == 1
     assert configs[0].has_schedule is True
+
+
+def test_parse_github_actions_reusable_workflow_job(tmp_path: Path) -> None:
+    """Job-level uses: (reusable workflow call) should appear in commands."""
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+
+    ci_content = """\
+name: Call reusable
+jobs:
+  call-shared-lint:
+    uses: org/repo/.github/workflows/lint.yml@main
+    with:
+      foo: bar
+"""
+    (workflow_dir / "ci.yml").write_text(ci_content, encoding="utf-8")
+
+    configs = parse_ci_configs(tmp_path)
+    assert len(configs) == 1
+
+    job = configs[0].jobs[0]
+    assert job.name == "call-shared-lint"
+    assert "uses: org/repo/.github/workflows/lint.yml@main" in job.commands
