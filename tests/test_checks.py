@@ -143,16 +143,16 @@ jobs:
         assert result.score == pytest.approx(2.0)
         assert "spotless plugin found" in result.evidence.lower()
 
-    def test_partial_with_checkstyle_xml(self, tmp_path: Path) -> None:
+    def test_no_credit_for_checkstyle_xml(self, tmp_path: Path) -> None:
+        """checkstyle is a linter, not a formatter — no formatter points for checkstyle.xml."""
         from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
 
         context = _build_context(
             tmp_path, {"pom.xml": "<project/>", "checkstyle.xml": "<checkstyle/>"}
         )
         result = FormatterEnforcementCheck().run(context)
-        assert result.passed
-        assert result.score == pytest.approx(2.0)
-        assert "checkstyle config found" in result.evidence.lower()
+        assert not result.passed
+        assert result.score == pytest.approx(0.0)
 
 
 class TestDependencyAuditingCheck:

@@ -120,12 +120,6 @@ class FormatterEnforcementCheck(BaseCheck):
                     "Spotless plugin found but not confirmed in CI",
                     "Add spotless:check to your CI pipeline.",
                 )
-            if context.has_file("checkstyle.xml"):
-                return self.partial_result(
-                    2.0,
-                    "Checkstyle config found but not confirmed in CI",
-                    "Add checkstyle to your CI pipeline.",
-                )
 
         return self.fail_result(
             "No formatter check found in CI",
