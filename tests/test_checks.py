@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from ai_harness_scorecard.repo_context import RepoContext
 
 
@@ -142,7 +143,7 @@ jobs:
         assert result.score == pytest.approx(2.0)
         assert "spotless plugin found" in result.evidence.lower()
 
-    def test_partial_with_spotless_in_gradle(self, tmp_path: Path) -> None:
+    def test_formatter_enforcement_pass_gradle_spotless(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
 
         gradle_content = """
@@ -199,7 +200,7 @@ jobs:
         assert result.passed
         assert "dependency-check-maven" in result.evidence
 
-    def test_fail_without_audit_tools(self, tmp_path: Path) -> None:
+    def test_dependency_auditing_fail(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.constraints import DependencyAuditingCheck
 
         context = _build_context(tmp_path)
@@ -228,7 +229,7 @@ class TestPropertyBasedTestingCheck:
         assert result.passed
         assert "MyPropertyTest.java" in result.evidence
 
-    def test_fail_without_property_testing(self, tmp_path: Path) -> None:
+    def test_property_based_testing_fail(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.testing import PropertyBasedTestingCheck
 
         context = _build_context(tmp_path)
