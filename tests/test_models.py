@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from hypothesis import given
-from hypothesis import strategies as st
-
 from ai_harness_scorecard.models import (
     Assessment,
     CategoryResult,
@@ -12,6 +9,8 @@ from ai_harness_scorecard.models import (
     Grade,
     compute_grade,
 )
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 class TestComputeGrade:
