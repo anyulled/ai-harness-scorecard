@@ -121,6 +121,16 @@ class FormatterEnforcementCheck(BaseCheck):
                     "Add spotless:check to your CI pipeline.",
                 )
 
+            gradle_file = context.has_file("build.gradle", "build.gradle.kts")
+            if gradle_file and context.search_file(
+                gradle_file, r"com\.diffplug\.spotless|spotless|spotlessGradlePlugin"
+            ):
+                return self.partial_result(
+                    2.0,
+                    "Spotless plugin found but not confirmed in CI",
+                    "Add spotlessCheck to your CI pipeline.",
+                )
+
         return self.fail_result(
             "No formatter check found in CI",
             "Add a formatter check to CI (e.g. cargo fmt --all -- --check, prettier --check).",
