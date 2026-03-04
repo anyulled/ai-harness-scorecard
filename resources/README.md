@@ -231,6 +231,24 @@ Each check in the scorecard cites a `source` field linking back to one of these 
 - **URL**: https://reviewnudgebot.com/blog/how-to-accelerate-code-reviews-with-nudges-insights-from-microsofts-study/
 - **Relevance**: Analysis of 22,875 PRs. Automated nudges achieved 60% reduction in PR completion times across 8,000+ repos. Supports our `code_review_required` and `automated_review` checks.
 
+### Geoffrey Huntley — "Ralph Wiggum as a Software Engineer" (Jul 2025)
+
+- **Type**: Blog post / technique description
+- **URL**: https://ghuntley.com/ralph/
+- **Relevance**: Documents the "Ralph" technique for autonomous AI coding — a bash loop (`while :; do cat PROMPT.md | claude-code ; done`) that runs an AI agent continuously on a single repo. Used to build a production-grade programming language from scratch. Key insights for our scorecard:
+  - **Back pressure is everything**: Type systems, static analyzers, security scanners, and tests act as gates that reject invalid code generation each loop. The faster the wheel turns, the more important mechanical constraints become.
+  - **Specs drive everything**: Specification files (one per feature) are fed to the agent every loop, functioning as the deterministic contract. This maps directly to our `agent_instructions` and design-before-code checks.
+  - **AGENT.md as living context**: The agent updates its own instructions file with learned build commands and patterns. Supports our `agent_instructions` check rationale.
+  - **Tests capture reasoning**: When the agent writes tests, it documents *why* the test exists — leaving notes for future iterations that won't have the original reasoning in context.
+  - **Greenfield-only caveat**: "There's no way in heck would I use Ralph in an existing code base." This validates that existing repos need stronger safeguards (what we measure) for AI to work safely.
+  - Real-world outcome: a $50K USD contract delivered for $297 in AI compute costs.
+
+### Ars Contexta — Memory Infrastructure for Claude Code
+
+- **Type**: Tool / Claude Code plugin
+- **URL**: https://github.com/agenticnotetaking/arscontexta
+- **Relevance**: Claude Code plugin (2,000+ stars) that generates persistent knowledge systems from conversation. Creates markdown-based vaults with wiki-linked notes forming a traversable knowledge graph. Uses a three-space architecture: `self/` (agent persistent mind), `notes/` (knowledge graph), `ops/` (operations). The derivation-based approach (not templating) generates a custom cognitive architecture from 2-4 conversation turns. Relevant to our `agent_instructions` and `architecture_doc` checks — demonstrates that AI agents need structured, persistent context to maintain quality across sessions.
+
 ## Videos & Talks
 
 ### Charity Majors — "Observability & Testing in Production" (2024)
@@ -334,6 +352,8 @@ Each check in the scorecard cites a `source` field linking back to one of these 
 | Kent Beck (TDD) | `test_suite_exists` |
 | Kent Beck (Tidy First?) | `small_batch_enforcement` |
 | Dave Farley (Modern SE) | `ci_pipeline_exists`, `coverage_measurement` |
+| Huntley: Ralph Wiggum technique | `agent_instructions`, `linter_enforcement`, `formatter_enforcement`, `type_safety`, `test_suite_exists`, `tests_blocking_ci` |
+| Ars Contexta (memory plugin) | `agent_instructions`, `architecture_doc` |
 
 ## Contributing
 
