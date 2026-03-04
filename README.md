@@ -167,7 +167,16 @@ ai-harness-scorecard assess gitlab:group/project
 1. **Deterministic.** No LLM dependency. Two runs on the same repo produce the same score.
 2. **Language-aware.** Checks adapt to Rust, Python, TypeScript, Go, Java, etc.
 3. **Additive scoring.** Each check contributes points. Missing an inapplicable check doesn't penalize.
-4. **Research-grounded.** Every check maps back to a specific study or published best practice.
+4. **Research-grounded.** Every check maps back to a specific study or published best practice. See [resources/](resources/README.md) for the full knowledge base.
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Module layout, dependency rules, data flow |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup, how to add checks, PR guidelines |
+| [AGENTS.md](AGENTS.md) | AI agent instructions and naming conventions |
+| [resources/](resources/README.md) | Research, blog posts, and references behind each check |
 
 ## Development
 
@@ -185,6 +194,8 @@ pytest
 # Lint
 ruff check src/ tests/
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
 ## License
 
