@@ -33,14 +33,15 @@ all = ["ai-harness-scorecard[github,gitlab]"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
-    "ruff>=0.4",
-    "mypy>=1.10",
+    "ruff>=0.15.4",
+    "mypy>=1.19.1",
     "types-PyYAML>=6.0",
     "bandit>=1.7",
     "pip-audit>=2.7",
     "hypothesis>=6.100",
     "lychee>=0.1",
     "mutmut>=3.0",
+    "pre-commit>=3.7",
 ]
 
 [project.scripts]
@@ -54,7 +55,7 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM"]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

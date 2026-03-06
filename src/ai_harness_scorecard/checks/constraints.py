@@ -5,9 +5,13 @@ Blog principle: 'Rules enforced by linters, structural tests, and CI gates.'
 
 from __future__ import annotations
 
-from ..models import CheckResult
-from ..repo_context import RepoContext
+from typing import TYPE_CHECKING
+
 from .base import BaseCheck
+
+if TYPE_CHECKING:
+    from ..models import CheckResult
+    from ..repo_context import RepoContext
 
 
 class CIPipelineExistsCheck(BaseCheck):
@@ -112,13 +116,23 @@ class FormatterEnforcementCheck(BaseCheck):
             if context.ci_has_command(pattern):
                 return self.pass_result(f"Formatter check found in CI: {pattern}")
 
-        if "java" in context.languages:
+        if "java" in context.languages or "kotlin" in context.languages:
             pom_xml = context.has_file("pom.xml")
             if pom_xml and context.search_file(pom_xml, r"spotless-maven-plugin"):
                 return self.partial_result(
                     2.0,
                     "Spotless plugin found but not confirmed in CI",
                     "Add spotless:check to your CI pipeline.",
+                )
+
+            gradle_file = context.has_file("build.gradle", "build.gradle.kts")
+            if gradle_file and context.search_file(
+                gradle_file, r"com\.diffplug\.spotless|spotless|spotlessGradlePlugin"
+            ):
+                return self.partial_result(
+                    2.0,
+                    "Spotless plugin found but not confirmed in CI",
+                    "Add spotlessCheck to your CI pipeline.",
                 )
 
         return self.fail_result(

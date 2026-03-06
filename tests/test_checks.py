@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
@@ -143,6 +146,35 @@ jobs:
         assert result.score == pytest.approx(2.0)
         assert "spotless plugin found" in result.evidence.lower()
 
+    def test_formatter_enforcement_pass_gradle_spotless(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
+
+        gradle_content = """
+        plugins {
+            id "com.diffplug.spotless" version "6.13.0"
+        }
+        """
+        context = _build_context(tmp_path, {"build.gradle": gradle_content})
+        result = FormatterEnforcementCheck().run(context)
+        assert result.passed
+        assert result.score == pytest.approx(2.0)
+        assert "spotless plugin found" in result.evidence.lower()
+
+    def test_formatter_enforcement_pass_kotlin_gradle_spotless(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
+
+        gradle_content = """
+        plugins {
+            id("com.diffplug.spotless") version "6.13.0"
+        }
+        """
+        # RepoContext detects kotlin if build.gradle.kts exists
+        context = _build_context(tmp_path, {"build.gradle.kts": gradle_content, "src/Main.kt": ""})
+        result = FormatterEnforcementCheck().run(context)
+        assert result.passed
+        assert result.score == pytest.approx(2.0)
+        assert "spotless plugin found" in result.evidence.lower()
+
     def test_no_credit_for_checkstyle_xml(self, tmp_path: Path) -> None:
         """checkstyle is a linter, not a formatter — no formatter points for checkstyle.xml."""
         from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
@@ -186,6 +218,14 @@ jobs:
         assert result.passed
         assert "dependency-check-maven" in result.evidence
 
+    def test_dependency_auditing_fail(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import DependencyAuditingCheck
+
+        context = _build_context(tmp_path)
+        result = DependencyAuditingCheck().run(context)
+        assert not result.passed
+        assert result.score == pytest.approx(0.0)
+
 
 class TestPropertyBasedTestingCheck:
     def test_pass_with_jqwik_in_pom(self, tmp_path: Path) -> None:
@@ -206,6 +246,14 @@ class TestPropertyBasedTestingCheck:
         result = PropertyBasedTestingCheck().run(context)
         assert result.passed
         assert "MyPropertyTest.java" in result.evidence
+
+    def test_property_based_testing_fail(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.testing import PropertyBasedTestingCheck
+
+        context = _build_context(tmp_path)
+        result = PropertyBasedTestingCheck().run(context)
+        assert not result.passed
+        assert result.score == pytest.approx(0.0)
 
 
 class TestSecurityCriticalMarkingCheck:
