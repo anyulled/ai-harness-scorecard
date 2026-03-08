@@ -289,6 +289,15 @@ class TestFuzzTestingCheck:
         assert result.passed
         assert "pom.xml" in result.evidence
 
+    def test_pass_with_jazzer_in_gradle(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.testing import FuzzTestingCheck
+
+        gradle_content = "dependencies { testImplementation 'com.code-intelligence:jazzer-junit' }"
+        context = _build_context(tmp_path, {"build.gradle": gradle_content})
+        result = FuzzTestingCheck().run(context)
+        assert result.passed
+        assert "build.gradle" in result.evidence
+
     def test_pass_with_java_fuzz_test_file(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.testing import FuzzTestingCheck
 
