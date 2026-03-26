@@ -212,6 +212,26 @@ jobs:
         4.0,
         "spotbugs",
     ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """,
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew check
+""",
+        },
+        4.0,
+        "check",
+    ),
 ]
 
 
