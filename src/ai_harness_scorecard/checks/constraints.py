@@ -62,14 +62,31 @@ class LinterEnforcementCheck(BaseCheck):
         r"ktlint",
         r"swiftlint",
         r"checkstyle",
-        r"\bpmd:(check|pmd)\b",
+        r"\bpmd:(check|aggregate-pmd-check)\b",
         r"\b(?:\./)?gradlew?\b.*\b(pmdMain|pmdTest)\b",
     ]
 
     def run(self, context: RepoContext) -> CheckResult:
+        pmd_gradle_pattern = (
+            r'id\("pmd"\)|id\s+[\'"]pmd[\'"]|apply\s+plugin:\s*[\'"]pmd[\'"]|pmd\s*\{'
+        )
+        has_pmd_gradle_config = context.search_any_file(
+            [
+                "build.gradle",
+                "*/build.gradle",
+                "build.gradle.kts",
+                "*/build.gradle.kts",
+            ],
+            pmd_gradle_pattern,
+        )
+
         for pattern in self.LINTER_PATTERNS:
             if context.ci_has_blocking_command(pattern):
                 return self.pass_result(f"Blocking linter found in CI: {pattern}")
+
+        gradle_check_pattern = r"\b(?:\./)?gradlew?\b.*\bcheck\b"
+        if has_pmd_gradle_config and context.ci_has_blocking_command(gradle_check_pattern):
+            return self.pass_result(f"Blocking linter found in CI: {gradle_check_pattern}")
 
         for pattern in self.LINTER_PATTERNS:
             if context.ci_has_command(pattern):
@@ -78,6 +95,13 @@ class LinterEnforcementCheck(BaseCheck):
                     f"Linter found in CI ({pattern}) but may not be blocking",
                     "Ensure linter job is not set to allow_failure / continue-on-error.",
                 )
+
+        if has_pmd_gradle_config and context.ci_has_command(gradle_check_pattern):
+            return self.partial_result(
+                2.0,
+                f"Linter found in CI ({gradle_check_pattern}) but may not be blocking",
+                "Ensure linter job is not set to allow_failure / continue-on-error.",
+            )
 
         if "java" in context.languages and context.has_file("checkstyle.xml"):
             return self.partial_result(
@@ -88,34 +112,9 @@ class LinterEnforcementCheck(BaseCheck):
 
         if "java" in context.languages:
             pmd_config = context.has_file("pmd.xml", "*/pmd.xml")
-            if pmd_config:
-                return self.partial_result(
-                    2.0,
-                    "PMD config found but not confirmed in CI",
-                    "Add PMD to your CI pipeline as a blocking job.",
-                )
-
             pom_xml = context.search_any_file(["pom.xml", "*/pom.xml"], r"maven-pmd-plugin")
-            if pom_xml:
-                return self.partial_result(
-                    2.0,
-                    "PMD config found but not confirmed in CI",
-                    "Add PMD to your CI pipeline as a blocking job.",
-                )
-
-            pmd_gradle_pattern = (
-                r'id\("pmd"\)|id\s+[\'"]pmd[\'"]|apply\s+plugin:\s*[\'"]pmd[\'"]|pmd\s*\{'
-            )
-            gradle_file = context.search_any_file(
-                [
-                    "build.gradle",
-                    "*/build.gradle",
-                    "build.gradle.kts",
-                    "*/build.gradle.kts",
-                ],
-                pmd_gradle_pattern,
-            )
-            if gradle_file:
+            has_pmd_config = bool(pmd_config or pom_xml or has_pmd_gradle_config)
+            if has_pmd_config:
                 return self.partial_result(
                     2.0,
                     "PMD config found but not confirmed in CI",
@@ -155,18 +154,24 @@ class FormatterEnforcementCheck(BaseCheck):
                 return self.pass_result(f"Formatter check found in CI: {pattern}")
 
         if "java" in context.languages or "kotlin" in context.languages:
-            pom_xml = context.has_file("pom.xml")
-            if pom_xml and context.search_file(pom_xml, r"spotless-maven-plugin"):
+            pom_xml = context.search_any_file(["pom.xml", "*/pom.xml"], r"spotless-maven-plugin")
+            if pom_xml:
                 return self.partial_result(
                     2.0,
                     "Spotless plugin found but not confirmed in CI",
                     "Add spotless:check to your CI pipeline.",
                 )
 
-            gradle_file = context.has_file("build.gradle", "build.gradle.kts")
-            if gradle_file and context.search_file(
-                gradle_file, r"com\.diffplug\.spotless|spotless|spotlessGradlePlugin"
-            ):
+            gradle_file = context.search_any_file(
+                [
+                    "build.gradle",
+                    "*/build.gradle",
+                    "build.gradle.kts",
+                    "*/build.gradle.kts",
+                ],
+                r"com\.diffplug\.spotless|spotless|spotlessGradlePlugin",
+            )
+            if gradle_file:
                 return self.partial_result(
                     2.0,
                     "Spotless plugin found but not confirmed in CI",
