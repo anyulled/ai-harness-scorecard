@@ -22,6 +22,71 @@ def _build_context(tmp_path: Path, files: dict[str, str] | None = None) -> RepoC
     return RepoContext.build(tmp_path)
 
 
+PMD_PARTIAL_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {"pom.xml": "<project/>", "pmd.xml": "<pmd/>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {"pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {"services/app/pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
+]
+
+PMD_CI_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn pmd:check
+""",
+        },
+        4.0,
+        "pmd",
+    ),
+    (
+        {
+            "build.gradle": "plugins {}",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew pmdMain
+""",
+        },
+        4.0,
+        "pmd",
+    ),
+]
+
+
 class TestArchitectureDocCheck:
     def test_pass_with_architecture_md(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.documentation import ArchitectureDocCheck
@@ -96,69 +161,13 @@ jobs:
                 4.0,
                 "checkstyle",
             ),
-            (
-                {
-                    "pom.xml": "<project/>",
-                    ".github/workflows/ci.yml": """\
-name: CI
-on: push
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - run: mvn pmd:check
-""",
-                },
-                4.0,
-                "pmd",
-            ),
-            (
-                {
-                    "build.gradle": "plugins {}",
-                    ".github/workflows/ci.yml": """\
-name: CI
-on: push
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - run: ./gradlew pmdMain
-""",
-                },
-                4.0,
-                "pmd",
-            ),
+            *PMD_CI_LINTER_CASES,
             (
                 {"pom.xml": "<project/>", "checkstyle.xml": "<checkstyle/>"},
                 2.0,
                 "checkstyle config found",
             ),
-            (
-                {"pom.xml": "<project/>", "pmd.xml": "<pmd/>"},
-                2.0,
-                "pmd config found",
-            ),
-            (
-                {"pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
-                2.0,
-                "pmd config found",
-            ),
-            (
-                {"services/app/pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
-                2.0,
-                "pmd config found",
-            ),
-            (
-                {
-                    "build.gradle": """
-        plugins {
-            id "pmd"
-        }
-        """
-                },
-                2.0,
-                "pmd config found",
-            ),
+            *PMD_PARTIAL_LINTER_CASES,
         ],
     )
     def test_linter_enforcement_pass(
