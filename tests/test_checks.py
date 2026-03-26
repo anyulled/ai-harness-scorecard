@@ -49,6 +49,28 @@ PMD_PARTIAL_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
         2.0,
         "pmd config found",
     ),
+    (
+        {
+            "services/app/build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {
+            "services/app/build.gradle.kts": """
+        plugins {
+            id("pmd")
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
 ]
 
 PMD_CI_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
@@ -83,6 +105,26 @@ jobs:
         },
         4.0,
         "pmd",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """,
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew check
+""",
+        },
+        4.0,
+        "check",
     ),
 ]
 
@@ -199,6 +241,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: cat config/pmd.xml
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn pmd:pmd
 """,
             },
         ],
@@ -354,6 +408,20 @@ jobs:
         """
         # RepoContext detects kotlin if build.gradle.kts exists
         context = _build_context(tmp_path, {"build.gradle.kts": gradle_content, "src/Main.kt": ""})
+        result = FormatterEnforcementCheck().run(context)
+        assert result.passed
+        assert result.score == pytest.approx(2.0)
+        assert "spotless plugin found" in result.evidence.lower()
+
+    def test_formatter_enforcement_pass_nested_gradle_spotless(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
+
+        gradle_content = """
+        plugins {
+            id "com.diffplug.spotless" version "6.13.0"
+        }
+        """
+        context = _build_context(tmp_path, {"services/app/build.gradle": gradle_content})
         result = FormatterEnforcementCheck().run(context)
         assert result.passed
         assert result.score == pytest.approx(2.0)
