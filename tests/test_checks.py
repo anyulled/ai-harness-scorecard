@@ -198,6 +198,22 @@ jobs:
     ),
     (
         {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./mvnw com.github.spotbugs:spotbugs-maven-plugin:check
+""",
+        },
+        4.0,
+        "spotbugs-maven-plugin",
+    ),
+    (
+        {
             "build.gradle": "plugins {}",
             ".github/workflows/ci.yml": """\
 name: CI

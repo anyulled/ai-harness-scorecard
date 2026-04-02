@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     from ..repo_context import RepoContext
 
 
+JAVA_BUILD_FILES: list[str] = [
+    "build.gradle",
+    "*/build.gradle",
+    "build.gradle.kts",
+    "*/build.gradle.kts",
+]
+
+
 class CIPipelineExistsCheck(BaseCheck):
     check_id = "ci_pipeline_exists"
     name = "CI Pipeline"
@@ -64,34 +72,30 @@ class LinterEnforcementCheck(BaseCheck):
         r"checkstyle",
         r"\bpmd:(check|aggregate-pmd-check)\b",
         r"\b(?:\./)?gradlew?\b.*\b(pmdMain|pmdTest)\b",
-        r"\bspotbugs:check\b",
-        r"\b(?:\./)?gradlew?\b.*\bspotbugs(Main|Test)\b",
+        r"\bcom\.github\.spotbugs:spotbugs-maven-plugin:(check|spotbugs)\b",
+        r"\bspotbugs:(check|spotbugs)\b",
+        r"\b(?:\./)?gradlew?\b.*\bspotbugs(?:[A-Z]\w*)\b",
     ]
 
-    JAVA_BUILD_FILES = [
-        "build.gradle",
-        "*/build.gradle",
-        "build.gradle.kts",
-        "*/build.gradle.kts",
-    ]
+    GRADLE_CHECK_PATTERN = r"\b(?:\./)?gradlew?\b.*\bcheck\b"
 
     @staticmethod
     def _has_gradle_plugin(context: RepoContext, plugin_pattern: str) -> bool:
-        return bool(
-            context.search_any_file(LinterEnforcementCheck.JAVA_BUILD_FILES, plugin_pattern)
-        )
+        return bool(context.search_any_file(JAVA_BUILD_FILES, plugin_pattern))
 
     @staticmethod
     def _has_gradle_check_linter(context: RepoContext, *has_gradle_configs: bool) -> bool:
-        gradle_check_pattern = r"\b(?:\./)?gradlew?\b.*\bcheck\b"
-        return any(has_gradle_configs) and context.ci_has_blocking_command(gradle_check_pattern)
+        return any(has_gradle_configs) and context.ci_has_blocking_command(
+            LinterEnforcementCheck.GRADLE_CHECK_PATTERN
+        )
 
     @staticmethod
     def _has_nonblocking_gradle_check_linter(
         context: RepoContext, *has_gradle_configs: bool
     ) -> bool:
-        gradle_check_pattern = r"\b(?:\./)?gradlew?\b.*\bcheck\b"
-        return any(has_gradle_configs) and context.ci_has_command(gradle_check_pattern)
+        return any(has_gradle_configs) and context.ci_has_command(
+            LinterEnforcementCheck.GRADLE_CHECK_PATTERN
+        )
 
     @staticmethod
     def _has_java_linter_config(
@@ -100,15 +104,19 @@ class LinterEnforcementCheck(BaseCheck):
         config_files: tuple[str, ...] = (),
         pom_pattern: str | None = None,
         gradle_pattern: str | None = None,
+        has_gradle_config: bool | None = None,
     ) -> bool:
         has_config_file = bool(config_files) and bool(context.has_file(*config_files))
         has_pom_config = False
         if pom_pattern is not None:
             has_pom_config = bool(context.search_any_file(["pom.xml", "*/pom.xml"], pom_pattern))
 
-        has_gradle_config = False
-        if gradle_pattern is not None:
-            has_gradle_config = LinterEnforcementCheck._has_gradle_plugin(context, gradle_pattern)
+        if has_gradle_config is None:
+            has_gradle_config = False
+            if gradle_pattern is not None:
+                has_gradle_config = LinterEnforcementCheck._has_gradle_plugin(
+                    context, gradle_pattern
+                )
 
         return has_config_file or has_pom_config or has_gradle_config
 
@@ -127,11 +135,10 @@ class LinterEnforcementCheck(BaseCheck):
             if context.ci_has_blocking_command(pattern):
                 return self.pass_result(f"Blocking linter found in CI: {pattern}")
 
-        gradle_check_pattern = r"\b(?:\./)?gradlew?\b.*\bcheck\b"
         if self._has_gradle_check_linter(
             context, has_pmd_gradle_config, has_spotbugs_gradle_config
         ):
-            return self.pass_result(f"Blocking linter found in CI: {gradle_check_pattern}")
+            return self.pass_result(f"Blocking linter found in CI: {self.GRADLE_CHECK_PATTERN}")
 
         for pattern in self.LINTER_PATTERNS:
             if context.ci_has_command(pattern):
@@ -146,7 +153,7 @@ class LinterEnforcementCheck(BaseCheck):
         ):
             return self.partial_result(
                 2.0,
-                f"Linter found in CI ({gradle_check_pattern}) but may not be blocking",
+                f"Linter found in CI ({self.GRADLE_CHECK_PATTERN}) but may not be blocking",
                 "Ensure linter job is not set to allow_failure / continue-on-error.",
             )
 
@@ -162,7 +169,7 @@ class LinterEnforcementCheck(BaseCheck):
                 context,
                 config_files=("pmd.xml", "*/pmd.xml"),
                 pom_pattern=r"maven-pmd-plugin",
-                gradle_pattern=pmd_gradle_pattern,
+                has_gradle_config=has_pmd_gradle_config,
             )
             if has_pmd_config:
                 return self.partial_result(
@@ -175,7 +182,7 @@ class LinterEnforcementCheck(BaseCheck):
                 context,
                 config_files=("spotbugs-exclude.xml", "*/spotbugs-exclude.xml"),
                 pom_pattern=r"spotbugs-maven-plugin",
-                gradle_pattern=spotbugs_gradle_pattern,
+                has_gradle_config=has_spotbugs_gradle_config,
             )
             if has_spotbugs_config:
                 return self.partial_result(
@@ -226,7 +233,7 @@ class FormatterEnforcementCheck(BaseCheck):
                 )
 
             gradle_file = context.search_any_file(
-                LinterEnforcementCheck.JAVA_BUILD_FILES,
+                JAVA_BUILD_FILES,
                 r"com\.diffplug\.spotless|spotless|spotlessGradlePlugin",
             )
             if gradle_file:
