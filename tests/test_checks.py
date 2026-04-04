@@ -22,6 +22,235 @@ def _build_context(tmp_path: Path, files: dict[str, str] | None = None) -> RepoC
     return RepoContext.build(tmp_path)
 
 
+PMD_PARTIAL_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {"pom.xml": "<project/>", "pmd.xml": "<pmd/>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {"pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {"services/app/pom.xml": "<project><plugin>maven-pmd-plugin</plugin></project>"},
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {
+            "services/app/build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
+    (
+        {
+            "services/app/build.gradle.kts": """
+        plugins {
+            id("pmd")
+        }
+        """
+        },
+        2.0,
+        "pmd config found",
+    ),
+]
+
+PMD_CI_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn pmd:check
+""",
+        },
+        4.0,
+        "pmd",
+    ),
+    (
+        {
+            "build.gradle": "plugins {}",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew pmdMain
+""",
+        },
+        4.0,
+        "pmd",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "pmd"
+        }
+        """,
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew check
+""",
+        },
+        4.0,
+        "check",
+    ),
+]
+
+SPOTBUGS_PARTIAL_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {"pom.xml": "<project><plugin>spotbugs-maven-plugin</plugin></project>"},
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {"services/app/pom.xml": "<project><plugin>spotbugs-maven-plugin</plugin></project>"},
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "services/app/build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "services/app/build.gradle.kts": """
+        plugins {
+            id("com.github.spotbugs")
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {"pom.xml": "<project/>", "spotbugs-exclude.xml": "<FindBugsFilter/>"},
+        2.0,
+        "spotbugs config found",
+    ),
+]
+
+SPOTBUGS_CI_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn spotbugs:check
+""",
+        },
+        4.0,
+        "spotbugs",
+    ),
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./mvnw com.github.spotbugs:spotbugs-maven-plugin:check
+""",
+        },
+        4.0,
+        "spotbugs-maven-plugin",
+    ),
+    (
+        {
+            "build.gradle": "plugins {}",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew spotbugsMain
+""",
+        },
+        4.0,
+        "spotbugs",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """,
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew check
+""",
+        },
+        4.0,
+        "check",
+    ),
+]
+
+
 class TestArchitectureDocCheck:
     def test_pass_with_architecture_md(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.documentation import ArchitectureDocCheck
@@ -62,10 +291,12 @@ class TestAgentInstructionsCheck:
 
 
 class TestLinterEnforcementCheck:
-    def test_pass_with_ruff_in_ci(self, tmp_path: Path) -> None:
-        from ai_harness_scorecard.checks.constraints import LinterEnforcementCheck
-
-        ci_content = """
+    @pytest.mark.parametrize(
+        ("files", "expected_score", "evidence_substring"),
+        [
+            (
+                {
+                    ".github/workflows/ci.yml": """\
 name: CI
 on: push
 jobs:
@@ -74,14 +305,14 @@ jobs:
     steps:
       - run: ruff check src/
 """
-        context = _build_context(tmp_path, {".github/workflows/ci.yml": ci_content})
-        result = LinterEnforcementCheck().run(context)
-        assert result.passed
-
-    def test_pass_with_checkstyle_in_ci(self, tmp_path: Path) -> None:
-        from ai_harness_scorecard.checks.constraints import LinterEnforcementCheck
-
-        ci_content = """
+                },
+                4.0,
+                "ruff",
+            ),
+            (
+                {
+                    "pom.xml": "<project/>",
+                    ".github/workflows/ci.yml": """\
 name: CI
 on: push
 jobs:
@@ -89,29 +320,107 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: mvn checkstyle:check
-"""
-        context = _build_context(
-            tmp_path, {"pom.xml": "<project/>", ".github/workflows/ci.yml": ci_content}
-        )
-        result = LinterEnforcementCheck().run(context)
-        assert result.passed
-        assert "checkstyle" in result.evidence.lower()
-
-    def test_partial_with_checkstyle_xml_no_ci(self, tmp_path: Path) -> None:
+""",
+                },
+                4.0,
+                "checkstyle",
+            ),
+            *PMD_CI_LINTER_CASES,
+            *SPOTBUGS_CI_LINTER_CASES,
+            (
+                {"pom.xml": "<project/>", "checkstyle.xml": "<checkstyle/>"},
+                2.0,
+                "checkstyle config found",
+            ),
+            *PMD_PARTIAL_LINTER_CASES,
+            *SPOTBUGS_PARTIAL_LINTER_CASES,
+        ],
+    )
+    def test_linter_enforcement_pass(
+        self,
+        tmp_path: Path,
+        files: dict[str, str],
+        expected_score: float,
+        evidence_substring: str,
+    ) -> None:
         from ai_harness_scorecard.checks.constraints import LinterEnforcementCheck
 
-        context = _build_context(
-            tmp_path, {"pom.xml": "<project/>", "checkstyle.xml": "<checkstyle/>"}
-        )
+        context = _build_context(tmp_path, files)
         result = LinterEnforcementCheck().run(context)
         assert result.passed
-        assert result.score == pytest.approx(2.0)
-        assert "checkstyle config found" in result.evidence.lower()
+        assert result.score == pytest.approx(expected_score)
+        assert evidence_substring in result.evidence.lower()
 
-    def test_fail_without_ci(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "files",
+        [
+            None,
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cat config/pmd.xml
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn pmd:pmd
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cat config/spotbugs-exclude.xml
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo com.github.spotbugs
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "spotbugs should run later"
+""",
+            },
+        ],
+    )
+    def test_linter_enforcement_fail(self, tmp_path: Path, files: dict[str, str] | None) -> None:
         from ai_harness_scorecard.checks.constraints import LinterEnforcementCheck
 
-        context = _build_context(tmp_path)
+        context = _build_context(tmp_path, files)
         result = LinterEnforcementCheck().run(context)
         assert not result.passed
 
@@ -259,6 +568,20 @@ jobs:
         """
         # RepoContext detects kotlin if build.gradle.kts exists
         context = _build_context(tmp_path, {"build.gradle.kts": gradle_content, "src/Main.kt": ""})
+        result = FormatterEnforcementCheck().run(context)
+        assert result.passed
+        assert result.score == pytest.approx(2.0)
+        assert "spotless plugin found" in result.evidence.lower()
+
+    def test_formatter_enforcement_pass_nested_gradle_spotless(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
+
+        gradle_content = """
+        plugins {
+            id "com.diffplug.spotless" version "6.13.0"
+        }
+        """
+        context = _build_context(tmp_path, {"services/app/build.gradle": gradle_content})
         result = FormatterEnforcementCheck().run(context)
         assert result.passed
         assert result.score == pytest.approx(2.0)
