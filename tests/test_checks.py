@@ -128,6 +128,128 @@ jobs:
     ),
 ]
 
+SPOTBUGS_PARTIAL_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {"pom.xml": "<project><plugin>spotbugs-maven-plugin</plugin></project>"},
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {"services/app/pom.xml": "<project><plugin>spotbugs-maven-plugin</plugin></project>"},
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "services/app/build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {
+            "services/app/build.gradle.kts": """
+        plugins {
+            id("com.github.spotbugs")
+        }
+        """
+        },
+        2.0,
+        "spotbugs config found",
+    ),
+    (
+        {"pom.xml": "<project/>", "spotbugs-exclude.xml": "<FindBugsFilter/>"},
+        2.0,
+        "spotbugs config found",
+    ),
+]
+
+SPOTBUGS_CI_LINTER_CASES: list[tuple[dict[str, str], float, str]] = [
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mvn spotbugs:check
+""",
+        },
+        4.0,
+        "spotbugs",
+    ),
+    (
+        {
+            "pom.xml": "<project/>",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./mvnw com.github.spotbugs:spotbugs-maven-plugin:check
+""",
+        },
+        4.0,
+        "spotbugs-maven-plugin",
+    ),
+    (
+        {
+            "build.gradle": "plugins {}",
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew spotbugsMain
+""",
+        },
+        4.0,
+        "spotbugs",
+    ),
+    (
+        {
+            "build.gradle": """
+        plugins {
+            id "com.github.spotbugs"
+        }
+        """,
+            ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew check
+""",
+        },
+        4.0,
+        "check",
+    ),
+]
+
 
 class TestArchitectureDocCheck:
     def test_pass_with_architecture_md(self, tmp_path: Path) -> None:
@@ -204,12 +326,14 @@ jobs:
                 "checkstyle",
             ),
             *PMD_CI_LINTER_CASES,
+            *SPOTBUGS_CI_LINTER_CASES,
             (
                 {"pom.xml": "<project/>", "checkstyle.xml": "<checkstyle/>"},
                 2.0,
                 "checkstyle config found",
             ),
             *PMD_PARTIAL_LINTER_CASES,
+            *SPOTBUGS_PARTIAL_LINTER_CASES,
         ],
     )
     def test_linter_enforcement_pass(
@@ -255,6 +379,42 @@ jobs:
       - run: mvn pmd:pmd
 """,
             },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cat config/spotbugs-exclude.xml
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo com.github.spotbugs
+""",
+            },
+            {
+                "pom.xml": "<project/>",
+                ".github/workflows/ci.yml": """\
+name: CI
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "spotbugs should run later"
+""",
+            },
         ],
     )
     def test_linter_enforcement_fail(self, tmp_path: Path, files: dict[str, str] | None) -> None:
@@ -265,7 +425,96 @@ jobs:
         assert not result.passed
 
 
+class TestTestSuiteExistsCheck:
+    def test_test_suite_exists_pass_gradlew(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.testing import TestSuiteExistsCheck
+
+        ci_content = """
+name: Unit Test
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew test
+"""
+        context = _build_context(
+            tmp_path, {"src/test/README.md": "", ".github/workflows/ci.yml": ci_content}
+        )
+        result = TestSuiteExistsCheck().run(context)
+        assert result.passed
+
+    def test_test_suite_exists_pass_gradlew_no_dot_slash(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.testing import TestSuiteExistsCheck
+
+        ci_content = """
+name: Test
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gradlew test
+"""
+        context = _build_context(
+            tmp_path, {"src/test/README.md": "", ".github/workflows/ci.yml": ci_content}
+        )
+        result = TestSuiteExistsCheck().run(context)
+        assert result.passed
+
+    def test_test_suite_exists_fail(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.testing import TestSuiteExistsCheck
+
+        context = _build_context(tmp_path)
+        result = TestSuiteExistsCheck().run(context)
+        assert not result.passed
+
+
+class TestAPIContractsCheck:
+    def test_api_contracts_pass_springdoc(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.documentation import APIContractsCheck
+
+        gradle_content = """
+dependencies {
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.0")
+}
+"""
+        context = _build_context(tmp_path, {"build.gradle.kts": gradle_content})
+        result = APIContractsCheck().run(context)
+        assert result.passed
+
+    def test_api_contracts_pass_openapi_yaml(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.documentation import APIContractsCheck
+
+        context = _build_context(tmp_path, {"openapi.yaml": "openapi: 3.0.0"})
+        result = APIContractsCheck().run(context)
+        assert result.passed
+
+    def test_api_contracts_fail(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.documentation import APIContractsCheck
+
+        context = _build_context(tmp_path)
+        result = APIContractsCheck().run(context)
+        assert not result.passed
+
+
 class TestFormatterEnforcementCheck:
+    def test_formatter_enforcement_pass_ktlint(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
+
+        ci_content = """
+name: Lint
+on: push
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./gradlew clean ktlintCheck
+"""
+        context = _build_context(tmp_path, {".github/workflows/ci.yml": ci_content})
+        result = FormatterEnforcementCheck().run(context)
+        assert result.passed
+
     def test_pass_with_spotless_in_ci(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.constraints import FormatterEnforcementCheck
 
@@ -380,6 +629,22 @@ jobs:
         result = DependencyAuditingCheck().run(context)
         assert result.passed
         assert "dependency-check-maven" in result.evidence
+
+    def test_dependency_auditing_pass_dependabot_config(self, tmp_path: Path) -> None:
+        from ai_harness_scorecard.checks.constraints import DependencyAuditingCheck
+
+        dependabot_content = """
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+"""
+        context = _build_context(tmp_path, {".github/dependabot.yml": dependabot_content})
+        result = DependencyAuditingCheck().run(context)
+        assert result.passed
+        assert result.score == pytest.approx(1.0)
 
     def test_dependency_auditing_fail(self, tmp_path: Path) -> None:
         from ai_harness_scorecard.checks.constraints import DependencyAuditingCheck
