@@ -275,7 +275,9 @@ class CodeDuplicationCheck(BaseCheck):
     _BLOCKING_LIMIT_PATTERN = (
         r"(?s)(?=.*\bjscpd\b)(?=.*--threshold(?:=|\s+)\d+)|"
         r"pylint[^\n]*(?:r0801|duplicate-code)|"
-        r"sonar[^\n]*qualitygate\.wait\s*=\s*true"
+        r"sonar[^\n]*qualitygate\.wait\s*=\s*true|"
+        r"\bpmd:cpd-check\b|"
+        r"-Dcpd\.failOnViolation=true"
     )
     _CONFIG_FILES = (
         ".jscpd.json",
@@ -311,12 +313,14 @@ class CodeDuplicationCheck(BaseCheck):
         return self.fail_result(evidence, remediation)
 
     def _analyze(self, context: RepoContext) -> _DuplicationAnalysis:
-        files = [
-            path
-            for path in context.file_tree
-            if self._is_production_source(path) and not self._is_generated(context, path)
-        ]
-        lines_by_file = {path: self._normalized_lines(context, path) for path in files}
+        lines_by_file = {}
+        for path in context.file_tree:
+            if not self._is_production_source(path):
+                continue
+            content = context.read_file(path)
+            if content is None or self._is_generated(content):
+                continue
+            lines_by_file[path] = self._normalized_lines(path, content)
         windows: dict[tuple[str, ...], list[tuple[str, int]]] = defaultdict(list)
 
         for path, lines in lines_by_file.items():
@@ -340,30 +344,28 @@ class CodeDuplicationCheck(BaseCheck):
     def _is_production_source(self, path: str) -> bool:
         pure_path = PurePosixPath(path)
         parts = tuple(part.lower() for part in pure_path.parts)
-        stem = pure_path.stem.lower()
+        stem = pure_path.stem
+        normalized_stem = stem.lower()
         if pure_path.suffix.lower() not in self._SOURCE_SUFFIXES:
             return False
         if any(part in self._EXCLUDED_PARTS for part in parts[:-1]):
             return False
+        if pure_path.suffix.lower() == ".java" and (
+            re.fullmatch(r"Test[A-Z0-9_].*", stem) or re.fullmatch(r".+Test", stem)
+        ):
+            return False
         return not (
-            stem.startswith("test_")
-            or stem.endswith("_test")
-            or stem.endswith(".test")
-            or stem.endswith(".spec")
+            normalized_stem.startswith("test_")
+            or normalized_stem.endswith("_test")
+            or normalized_stem.endswith(".test")
+            or normalized_stem.endswith(".spec")
         )
 
-    def _is_generated(self, context: RepoContext, path: str) -> bool:
-        content = context.read_file(path)
-        if content is None:
-            return True
+    def _is_generated(self, content: str) -> bool:
         header = "\n".join(content.splitlines()[:5]).lower()
         return any(marker in header for marker in self._GENERATED_MARKERS)
 
-    def _normalized_lines(self, context: RepoContext, path: str) -> list[_SourceLine]:
-        content = context.read_file(path)
-        if content is None:
-            return []
-
+    def _normalized_lines(self, path: str, content: str) -> list[_SourceLine]:
         normalized_lines = []
         for line_number, raw_line in enumerate(content.splitlines(), start=1):
             stripped = raw_line.strip()
@@ -383,14 +385,22 @@ class CodeDuplicationCheck(BaseCheck):
         occurrences: list[tuple[str, int]],
         duplicated_indexes: dict[str, set[int]],
     ) -> None:
-        paths = {path for path, _ in occurrences}
-        for path, start in occurrences:
-            has_match = len(paths) > 1 or any(
-                other_path == path and abs(other_start - start) >= self._MINIMUM_BLOCK_LINES
-                for other_path, other_start in occurrences
-            )
-            if has_match:
-                duplicated_indexes[path].update(range(start, start + self._MINIMUM_BLOCK_LINES))
+        sorted_occurrences = sorted(occurrences)
+        paths = {path for path, _ in sorted_occurrences}
+        if len(paths) > 1:
+            qualifying_occurrences = sorted_occurrences
+        else:
+            first_start = sorted_occurrences[0][1]
+            last_start = sorted_occurrences[-1][1]
+            qualifying_occurrences = [
+                (path, start)
+                for path, start in sorted_occurrences
+                if start - first_start >= self._MINIMUM_BLOCK_LINES
+                or last_start - start >= self._MINIMUM_BLOCK_LINES
+            ]
+
+        for path, start in qualifying_occurrences:
+            duplicated_indexes[path].update(range(start, start + self._MINIMUM_BLOCK_LINES))
 
     def _largest_blocks(
         self,

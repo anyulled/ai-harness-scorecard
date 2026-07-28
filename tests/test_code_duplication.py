@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from ai_harness_scorecard.checks.testing import CodeDuplicationCheck
 from ai_harness_scorecard.repo_context import RepoContext
@@ -139,6 +142,14 @@ class TestCodeDuplicationCheck:
 
         assert "100.00% (10/10 lines)" in result.evidence
 
+    def test_testing_code_duplication_reads_each_source_file_once(self, tmp_path: Path) -> None:
+        context = _build_context(tmp_path, {"src/app.py": _unique_source("value", 10)})
+
+        with patch.object(context, "read_file", wraps=context.read_file) as read_file:
+            CodeDuplicationCheck()._analyze(context)
+
+        assert read_file.call_count == 1
+
     def test_testing_code_duplication_excludes_nonproduction_files(self, tmp_path: Path) -> None:
         duplicate = "\n".join(f"shared_{index} = {index}" for index in range(5))
         context = _build_context(
@@ -164,11 +175,28 @@ class TestCodeDuplicationCheck:
         assert "0.00% (0/10 lines)" in result.evidence
 
     @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("src/main/java/TestMatch.java", False),
+            ("src/main/java/MatchTest.java", False),
+            ("src/main/java/Contest.java", True),
+            ("src/main/java/Testament.java", True),
+            ("src/main/java/Match.java", True),
+        ],
+    )
+    def test_testing_code_duplication_java_test_filename_conventions(
+        self, path: str, expected: bool
+    ) -> None:
+        assert CodeDuplicationCheck()._is_production_source(path) is expected
+
+    @pytest.mark.parametrize(
         "command",
         [
             "jscpd --threshold=5 src",
             "pylint --enable=R0801 src",
             "sonar-scanner -Dsonar.qualitygate.wait=true",
+            "mvn pmd:cpd-check",
+            "./mvnw verify -Dcpd.failOnViolation=true",
         ],
     )
     def test_testing_code_duplication_detects_blocking_ci_controls(
@@ -274,3 +302,28 @@ jobs:
         second = check.run(context)
 
         assert first == second
+
+    @settings(
+        max_examples=50,
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    @given(
+        unique_line_count=st.integers(min_value=0, max_value=80),
+        duplicate_count=st.integers(min_value=0, max_value=12),
+    )
+    def test_testing_code_duplication_analysis_invariants(
+        self,
+        tmp_path: Path,
+        unique_line_count: int,
+        duplicate_count: int,
+    ) -> None:
+        duplicate_block = [f"shared_{index} = {index}" for index in range(5)]
+        unique_lines = [f"unique_{index} = {index}" for index in range(unique_line_count)]
+        source = "\n".join(unique_lines + duplicate_block * duplicate_count)
+        context = _build_context(tmp_path, {"src/property.py": source})
+
+        analysis = CodeDuplicationCheck()._analyze(context)
+
+        assert 0 <= analysis.duplicated_lines <= analysis.total_lines
+        assert 0 <= analysis.percentage <= 100
