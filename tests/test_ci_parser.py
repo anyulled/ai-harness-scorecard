@@ -41,6 +41,28 @@ jobs:
     assert "./mvnw audit" in job.commands
 
 
+def test_parse_github_actions_tracks_blocking_steps_and_action_inputs(tmp_path: Path) -> None:
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    ci_content = """\
+name: CI
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kucherenko/jscpd@v5
+        with:
+          threshold: 5
+      - run: echo advisory
+        continue-on-error: true
+"""
+    (workflow_dir / "ci.yml").write_text(ci_content, encoding="utf-8")
+
+    job = parse_ci_configs(tmp_path)[0].jobs[0]
+
+    assert job.blocking_commands == ["uses: kucherenko/jscpd@v5\nwith.threshold: 5"]
+
+
 def test_parse_github_actions_schedule(tmp_path: Path) -> None:
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True)
