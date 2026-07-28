@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -126,6 +127,18 @@ class TestCodeDuplicationCheck:
 
         assert "100.00% (10/10 lines)" in result.evidence
 
+    def test_testing_code_duplication_discards_overlapping_single_file_windows(
+        self,
+    ) -> None:
+        duplicated_indexes: dict[str, set[int]] = defaultdict(set)
+
+        CodeDuplicationCheck()._mark_duplicate_occurrences(
+            [("src/app.py", 0), ("src/app.py", 5), ("src/app.py", 6)],
+            duplicated_indexes,
+        )
+
+        assert duplicated_indexes["src/app.py"] == set(range(10))
+
     def test_testing_code_duplication_normalizes_whitespace_and_comments(
         self, tmp_path: Path
     ) -> None:
@@ -193,7 +206,9 @@ class TestCodeDuplicationCheck:
         "command",
         [
             "jscpd --threshold=5 src",
+            "jscpd --threshold 0.5 src",
             "pylint --enable=R0801 src",
+            "pylint --enable=duplicate-code src",
             "sonar-scanner -Dsonar.qualitygate.wait=true",
             "mvn pmd:cpd-check",
             "./mvnw verify -Dcpd.failOnViolation=true",
@@ -214,6 +229,52 @@ class TestCodeDuplicationCheck:
 
         assert result.score == pytest.approx(3.0)
         assert "blocking duplication limit found" in result.evidence
+
+    @pytest.mark.parametrize(
+        ("command", "expected_score", "expected_evidence"),
+        [
+            ("jscpd --threshold 0 src", 2.5, "without a blocking limit"),
+            (
+                "pylint --disable=duplicate-code src",
+                2.0,
+                "no duplication control found",
+            ),
+            (
+                "pylint --enable=duplicate-code --disable=duplicate-code src",
+                2.0,
+                "no duplication control found",
+            ),
+            (
+                "sonar-scanner -Dsonar.qualitygate.wait=false",
+                2.5,
+                "without a blocking limit",
+            ),
+            (
+                "sonar-scanner -Dsonar.qualitygate.wait=trueish",
+                2.5,
+                "without a blocking limit",
+            ),
+        ],
+    )
+    def test_testing_code_duplication_rejects_disabled_or_zero_ci_controls(
+        self,
+        tmp_path: Path,
+        command: str,
+        expected_score: float,
+        expected_evidence: str,
+    ) -> None:
+        context = _build_context(
+            tmp_path,
+            {
+                "src/app.py": _unique_source("value", 10),
+                ".github/workflows/ci.yml": _github_job(command),
+            },
+        )
+
+        result = CodeDuplicationCheck().run(context)
+
+        assert result.score == pytest.approx(expected_score)
+        assert expected_evidence in result.evidence
 
     def test_testing_code_duplication_gives_partial_ci_credit(self, tmp_path: Path) -> None:
         context = _build_context(
@@ -269,6 +330,94 @@ jobs:
 
         assert result.score == pytest.approx(3.0)
         assert "blocking duplication limit found" in result.evidence
+
+    def test_testing_code_duplication_rejects_zero_jscpd_action_threshold(
+        self, tmp_path: Path
+    ) -> None:
+        workflow = """\
+name: CI
+on: push
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kucherenko/jscpd@v5
+        with:
+          threshold: 0
+"""
+        context = _build_context(
+            tmp_path,
+            {
+                "src/app.py": _unique_source("value", 10),
+                ".github/workflows/ci.yml": workflow,
+            },
+        )
+
+        result = CodeDuplicationCheck().run(context)
+
+        assert result.score == pytest.approx(2.5)
+        assert "without a blocking limit" in result.evidence
+
+    def test_testing_code_duplication_keeps_action_thresholds_in_same_step(
+        self, tmp_path: Path
+    ) -> None:
+        workflow = """\
+name: CI
+on: push
+jobs:
+  duplication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kucherenko/jscpd@v5
+      - uses: kucherenko/jscpd@v5
+        continue-on-error: true
+        with:
+          threshold: 5
+"""
+        context = _build_context(
+            tmp_path,
+            {
+                "src/app.py": _unique_source("value", 10),
+                ".github/workflows/ci.yml": workflow,
+            },
+        )
+
+        result = CodeDuplicationCheck().run(context)
+
+        assert result.score == pytest.approx(2.5)
+        assert "without a blocking limit" in result.evidence
+
+    def test_testing_code_duplication_keeps_action_thresholds_in_same_job(
+        self, tmp_path: Path
+    ) -> None:
+        workflow = """\
+name: CI
+on: push
+jobs:
+  blocking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kucherenko/jscpd@v5
+  advisory:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kucherenko/jscpd@v5
+        with:
+          threshold: 5
+"""
+        context = _build_context(
+            tmp_path,
+            {
+                "src/app.py": _unique_source("value", 10),
+                ".github/workflows/ci.yml": workflow,
+            },
+        )
+
+        result = CodeDuplicationCheck().run(context)
+
+        assert result.score == pytest.approx(2.5)
+        assert "without a blocking limit" in result.evidence
 
     def test_testing_code_duplication_configuration_only_has_no_ci_credit(
         self, tmp_path: Path
