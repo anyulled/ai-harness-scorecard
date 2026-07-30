@@ -41,7 +41,9 @@ jobs:
     assert "./mvnw audit" in job.commands
 
 
-def test_parse_github_actions_tracks_blocking_steps_and_action_inputs(tmp_path: Path) -> None:
+def test_parse_github_actions_tracks_blocking_steps_and_action_inputs_pass(
+    tmp_path: Path,
+) -> None:
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True)
     ci_content = """\
