@@ -26,6 +26,14 @@ class _SourceLine:
 
 
 @dataclass(frozen=True)
+class _DuplicateMatch:
+    left_path: str
+    left_start: int
+    right_path: str
+    right_start: int
+
+
+@dataclass(frozen=True)
 class _DuplicationAnalysis:
     total_lines: int
     duplicated_lines: int
@@ -349,10 +357,11 @@ class CodeDuplicationCheck(BaseCheck):
                 windows[block].append((path, start))
 
         duplicated_indexes: dict[str, set[int]] = defaultdict(set)
+        duplicate_matches: set[_DuplicateMatch] = set()
         for occurrences in windows.values():
-            self._mark_duplicate_occurrences(occurrences, duplicated_indexes)
+            self._mark_duplicate_occurrences(occurrences, duplicated_indexes, duplicate_matches)
 
-        largest_blocks = self._largest_blocks(lines_by_file, duplicated_indexes)
+        largest_blocks = self._largest_blocks(lines_by_file, duplicate_matches)
         return _DuplicationAnalysis(
             total_lines=sum(len(lines) for lines in lines_by_file.values()),
             duplicated_lines=sum(len(indexes) for indexes in duplicated_indexes.values()),
@@ -402,6 +411,7 @@ class CodeDuplicationCheck(BaseCheck):
         self,
         occurrences: list[tuple[str, int]],
         duplicated_indexes: dict[str, set[int]],
+        duplicate_matches: set[_DuplicateMatch] | None = None,
     ) -> None:
         sorted_occurrences = sorted(occurrences)
         paths = {path for path, _ in sorted_occurrences}
@@ -420,33 +430,100 @@ class CodeDuplicationCheck(BaseCheck):
 
         for path, start in qualifying_occurrences:
             duplicated_indexes[path].update(range(start, start + self._MINIMUM_BLOCK_LINES))
+        if duplicate_matches is not None:
+            self._record_duplicate_matches(qualifying_occurrences, duplicate_matches)
+
+    @staticmethod
+    def _record_duplicate_matches(
+        occurrences: list[tuple[str, int]], duplicate_matches: set[_DuplicateMatch]
+    ) -> None:
+        if len(occurrences) < 2:
+            return
+        first_by_path: dict[str, tuple[str, int]] = {}
+        for occurrence in occurrences:
+            first_by_path.setdefault(occurrence[0], occurrence)
+        representatives = list(first_by_path.values())
+        if len(representatives) == 1:
+            representatives = occurrences[:2]
+        anchor = representatives[0]
+        for partner in representatives[1:]:
+            left, right = sorted((anchor, partner))
+            duplicate_matches.add(
+                _DuplicateMatch(
+                    left_path=left[0],
+                    left_start=left[1],
+                    right_path=right[0],
+                    right_start=right[1],
+                )
+            )
 
     def _largest_blocks(
         self,
         lines_by_file: dict[str, list[_SourceLine]],
-        duplicated_indexes: dict[str, set[int]],
+        duplicate_matches: set[_DuplicateMatch],
     ) -> tuple[str, ...]:
         blocks: list[tuple[int, str]] = []
-        for path, indexes in duplicated_indexes.items():
-            if not indexes:
-                continue
-            start = previous = min(indexes)
-            for index in sorted(indexes)[1:]:
-                if index != previous + 1:
-                    blocks.append(self._format_block(lines_by_file[path], start, previous))
-                    start = index
-                previous = index
-            blocks.append(self._format_block(lines_by_file[path], start, previous))
+        matches_by_offset: dict[tuple[str, str, int], list[_DuplicateMatch]] = defaultdict(list)
+        for match in duplicate_matches:
+            matches_by_offset[
+                (match.left_path, match.right_path, match.right_start - match.left_start)
+            ].append(match)
+
+        for matches in matches_by_offset.values():
+            sorted_matches = sorted(matches, key=lambda match: match.left_start)
+            start = sorted_matches[0].left_start
+            end = start + self._MINIMUM_BLOCK_LINES
+            offset = sorted_matches[0].right_start - start
+            for match in sorted_matches[1:]:
+                if match.left_start <= end:
+                    end = max(end, match.left_start + self._MINIMUM_BLOCK_LINES)
+                    continue
+                blocks.append(
+                    self._format_match(
+                        lines_by_file,
+                        sorted_matches[0].left_path,
+                        start,
+                        sorted_matches[0].right_path,
+                        start + offset,
+                        end,
+                    )
+                )
+                start = match.left_start
+                end = start + self._MINIMUM_BLOCK_LINES
+                offset = match.right_start - start
+            blocks.append(
+                self._format_match(
+                    lines_by_file,
+                    sorted_matches[0].left_path,
+                    start,
+                    sorted_matches[0].right_path,
+                    start + offset,
+                    end,
+                )
+            )
 
         blocks.sort(key=lambda item: (-item[0], item[1]))
         return tuple(label for _, label in blocks[:3])
 
     @staticmethod
-    def _format_block(lines: list[_SourceLine], start: int, end: int) -> tuple[int, str]:
-        count = end - start + 1
-        first = lines[start]
-        last = lines[end]
-        return count, f"{first.path}:{first.line_number}-{last.line_number}"
+    def _format_match(
+        lines_by_file: dict[str, list[_SourceLine]],
+        left_path: str,
+        left_start: int,
+        right_path: str,
+        right_start: int,
+        end: int,
+    ) -> tuple[int, str]:
+        left_first = lines_by_file[left_path][left_start]
+        left_last = lines_by_file[left_path][end - 1]
+        right_end = right_start + end - left_start
+        right_first = lines_by_file[right_path][right_start]
+        right_last = lines_by_file[right_path][right_end - 1]
+        return (
+            end - left_start,
+            f"{left_first.path}:{left_first.line_number}-{left_last.line_number} "
+            f"↔ {right_first.path}:{right_first.line_number}-{right_last.line_number}",
+        )
 
     @staticmethod
     def _duplication_score(percentage: float) -> float:

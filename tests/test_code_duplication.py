@@ -129,6 +129,19 @@ class TestCodeDuplicationCheck:
 
         assert "100.00% (10/10 lines)" in result.evidence
 
+    def test_testing_code_duplication_reports_matching_partner_ranges(self, tmp_path: Path) -> None:
+        common = _duplicate_block() + [
+            "shared_final = build_value(final, config, options, meta, retries)"
+        ]
+        context = _build_context(
+            tmp_path,
+            {"src/first.py": "\n".join(common), "src/second.py": "\n".join(common)},
+        )
+
+        result = CodeDuplicationCheck().run(context)
+
+        assert "src/first.py:1-6 ↔ src/second.py:1-6" in result.remediation
+
     def test_testing_code_duplication_counts_overlapping_lines_once(self, tmp_path: Path) -> None:
         source = "\n".join(_duplicate_block() * 2)
         context = _build_context(tmp_path, {"src/app.py": source})
