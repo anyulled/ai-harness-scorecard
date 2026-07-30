@@ -47,7 +47,7 @@ class _DuplicationAnalysis:
 
 
 class TestSuiteExistsCheck(BaseCheck):
-    check_id = "test_suite_exists"
+    check_id = "testing.test_suite_exists"
     name = "Test Suite"
     description = "Tests present and executed in CI"
     max_points = 3.0
@@ -98,7 +98,7 @@ class TestSuiteExistsCheck(BaseCheck):
 
 
 class FeatureMatrixTestingCheck(BaseCheck):
-    check_id = "feature_matrix_testing"
+    check_id = "testing.feature_matrix_testing"
     name = "Feature Matrix Testing"
     description = "Multiple feature/configuration combinations tested in CI"
     max_points = 3.0
@@ -148,7 +148,7 @@ class FeatureMatrixTestingCheck(BaseCheck):
 
 
 class CoverageMeasurementCheck(BaseCheck):
-    check_id = "coverage_measurement"
+    check_id = "testing.coverage_measurement"
     name = "Code Coverage"
     description = "Code coverage measured in CI"
     max_points = 4.0
@@ -191,7 +191,7 @@ class CoverageMeasurementCheck(BaseCheck):
 
 
 class MutationTestingCheck(BaseCheck):
-    check_id = "mutation_testing"
+    check_id = "testing.mutation_testing"
     name = "Mutation Testing"
     description = "Mutation testing configured or running"
     max_points = 4.0
@@ -559,7 +559,7 @@ class CodeDuplicationCheck(BaseCheck):
 
 
 class PropertyBasedTestingCheck(BaseCheck):
-    check_id = "property_based_testing"
+    check_id = "testing.property_based_testing"
     name = "Property-Based Testing"
     description = "Property-based or generative testing libraries used"
     max_points = 3.0
@@ -615,7 +615,7 @@ class PropertyBasedTestingCheck(BaseCheck):
 
 
 class FuzzTestingCheck(BaseCheck):
-    check_id = "fuzz_testing"
+    check_id = "testing.fuzz_testing"
     name = "Fuzz Testing"
     description = "Fuzz testing targets present"
     max_points = 3.0
@@ -656,7 +656,7 @@ class FuzzTestingCheck(BaseCheck):
 
 
 class ContractTestsCheck(BaseCheck):
-    check_id = "contract_tests"
+    check_id = "testing.contract_tests"
     name = "Contract / Compatibility Tests"
     description = "Tests that verify external interface contracts or compatibility"
     max_points = 3.0
@@ -690,7 +690,7 @@ class ContractTestsCheck(BaseCheck):
 
 
 class TestsBlockingInCICheck(BaseCheck):
-    check_id = "tests_blocking_ci"
+    check_id = "testing.tests_blocking_ci"
     name = "Tests Block Merge"
     description = "Test jobs are blocking (not allow_failure)"
     max_points = 2.0
