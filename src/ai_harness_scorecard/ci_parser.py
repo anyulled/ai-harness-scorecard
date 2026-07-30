@@ -163,7 +163,7 @@ def _create_github_job(name: str, data: dict[str, Any]) -> CIJob:
     for step in data.get("steps", []):
         if not isinstance(step, dict):
             continue
-        step_allows_failure = bool(step.get("continue-on-error", False))
+        step_allows_failure = _allows_failure(step.get("continue-on-error", False))
         if "run" in step:
             command = str(step["run"])
             commands.append(command)
@@ -179,8 +179,17 @@ def _create_github_job(name: str, data: dict[str, Any]) -> CIJob:
         name=name,
         commands=commands,
         blocking_commands=blocking_commands,
-        allow_failure=bool(data.get("continue-on-error", False)),
+        allow_failure=_allows_failure(data.get("continue-on-error", False)),
     )
+
+
+def _allows_failure(value: object) -> bool:
+    """Return true only when continue-on-error is explicitly enabled."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
 
 
 def _format_github_action(action: str, inputs: object) -> str:
