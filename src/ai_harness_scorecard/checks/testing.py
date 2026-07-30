@@ -222,6 +222,8 @@ class CodeDuplicationCheck(BaseCheck):
     source = "jscpd - copy/paste detection and CI thresholds"
 
     _MINIMUM_BLOCK_LINES = 5
+    _MINIMUM_BLOCK_TOKENS = 50
+    _LEXICAL_TOKEN_PATTERN = re.compile(r"[A-Za-z_]\w*|\d+(?:\.\d+)?|[^\s]")
     _SOURCE_SUFFIXES = frozenset(
         {
             ".cs",
@@ -339,6 +341,11 @@ class CodeDuplicationCheck(BaseCheck):
                 block = tuple(
                     line.normalized for line in lines[start : start + self._MINIMUM_BLOCK_LINES]
                 )
+                if (
+                    len(self._LEXICAL_TOKEN_PATTERN.findall("\n".join(block)))
+                    < self._MINIMUM_BLOCK_TOKENS
+                ):
+                    continue
                 windows[block].append((path, start))
 
         duplicated_indexes: dict[str, set[int]] = defaultdict(set)

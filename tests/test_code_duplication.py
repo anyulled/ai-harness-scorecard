@@ -29,9 +29,19 @@ def _unique_source(prefix: str, line_count: int) -> str:
     return "\n".join(f"{prefix}_{index} = {index}" for index in range(line_count))
 
 
+def _duplicate_block() -> list[str]:
+    return [
+        (
+            f"shared_{index} = build_value(input_{index}, config_{index}, options_{index}, "
+            f"metadata_{index}, retries_{index})"
+        )
+        for index in range(5)
+    ]
+
+
 def _duplicate_files(total_lines: int) -> dict[str, str]:
     lines_per_file = total_lines // 2
-    common = [f"shared_{index} = {index}" for index in range(5)]
+    common = _duplicate_block()
     first = common + [f"first_{index} = {index}" for index in range(lines_per_file - 5)]
     second = common + [f"second_{index} = {index}" for index in range(lines_per_file - 5)]
     return {"src/first.py": "\n".join(first), "src/second.py": "\n".join(second)}
@@ -100,7 +110,7 @@ class TestCodeDuplicationCheck:
         assert expected_percentage in result.evidence
 
     def test_testing_code_duplication_detects_same_file_blocks(self, tmp_path: Path) -> None:
-        common = [f"shared_{index} = {index}" for index in range(5)]
+        common = _duplicate_block()
         source = "\n".join(common + ["separator = 1"] + common)
         context = _build_context(tmp_path, {"src/app.py": source})
 
@@ -109,7 +119,7 @@ class TestCodeDuplicationCheck:
         assert "(10/11 lines)" in result.evidence
 
     def test_testing_code_duplication_detects_cross_file_blocks(self, tmp_path: Path) -> None:
-        common = "\n".join(f"shared_{index} = {index}" for index in range(5))
+        common = "\n".join(_duplicate_block())
         context = _build_context(
             tmp_path,
             {"src/first.py": common, "src/second.py": common},
@@ -120,7 +130,7 @@ class TestCodeDuplicationCheck:
         assert "100.00% (10/10 lines)" in result.evidence
 
     def test_testing_code_duplication_counts_overlapping_lines_once(self, tmp_path: Path) -> None:
-        source = "\n".join("same_value = 1" for _ in range(10))
+        source = "\n".join(_duplicate_block() * 2)
         context = _build_context(tmp_path, {"src/app.py": source})
 
         result = CodeDuplicationCheck().run(context)
@@ -142,9 +152,9 @@ class TestCodeDuplicationCheck:
     def test_testing_code_duplication_normalizes_whitespace_and_comments(
         self, tmp_path: Path
     ) -> None:
-        first = "\n".join(["# comment", "", *[f"value_{index} = {index}" for index in range(5)]])
+        first = "\n".join(["# comment", "", *_duplicate_block()])
         second = "\n".join(
-            ["# another comment", *[f"value_{index}   =   {index}" for index in range(5)]]
+            ["# another comment", *[line.replace(" ", "   ") for line in _duplicate_block()]]
         )
         context = _build_context(
             tmp_path,
@@ -164,7 +174,7 @@ class TestCodeDuplicationCheck:
         assert read_file.call_count == 1
 
     def test_testing_code_duplication_excludes_nonproduction_files(self, tmp_path: Path) -> None:
-        duplicate = "\n".join(f"shared_{index} = {index}" for index in range(5))
+        duplicate = "\n".join(_duplicate_block())
         context = _build_context(
             tmp_path,
             {
@@ -452,6 +462,17 @@ jobs:
 
         assert first == second
 
+    def test_testing_code_duplication_ignores_short_lexical_blocks(self, tmp_path: Path) -> None:
+        imports = "\n".join(f"import module_{index}" for index in range(5))
+        context = _build_context(
+            tmp_path,
+            {"src/first.py": imports, "src/second.py": imports},
+        )
+
+        analysis = CodeDuplicationCheck()._analyze(context)
+
+        assert analysis.duplicated_lines == 0
+
     @settings(
         max_examples=50,
         deadline=None,
@@ -467,7 +488,7 @@ jobs:
         unique_line_count: int,
         duplicate_count: int,
     ) -> None:
-        duplicate_block = [f"shared_{index} = {index}" for index in range(5)]
+        duplicate_block = _duplicate_block()
         unique_lines = [f"unique_{index} = {index}" for index in range(unique_line_count)]
         source = "\n".join(unique_lines + duplicate_block * duplicate_count)
         context = _build_context(tmp_path, {"src/property.py": source})
